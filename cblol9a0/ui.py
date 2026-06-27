@@ -113,35 +113,13 @@ def navbar() -> rx.Component:
 
 # ====== HOME VIEW ======
 
-def _hero_champion(role: str, url: str) -> rx.Component:
-    return rx.flex(
-        rx.image(
-            src=url,
-            width="56px",
-            height="56px",
-            border_radius="50%",
-            border="2px solid " + GOLD,
-        ),
-        rx.text(role, font_size="0.65rem", color=GRAY_D, font_weight="600", mt="0.3rem",
-                 letter_spacing="0.03em", text_transform="uppercase"),
-        direction="column",
-        align="center",
-    )
-
-
-def _step_card(num: str, title: str, desc: str) -> rx.Component:
+def _how_to_step(num: str, title: str) -> rx.Component:
     return rx.box(
-        rx.text(num, font_size="2.2rem", font_weight="900", color=GOLD,
-                 line_height="1"),
-        rx.text(title, font_weight="700", font_size="0.9rem", color=WHITE, mt="0.4rem",
-                 letter_spacing="0.01em"),
-        rx.text(desc, font_size="0.72rem", color=GRAY_D, mt="0.2rem", line_height="1.4"),
-        bg=BG_CARD,
-        border="1px solid " + BORDER,
-        border_radius="10px",
-        p="1.25rem",
-        width="190px",
-        min_h="155px",
+        rx.text(num, font_size="2rem", font_weight="900", color=GOLD,
+                 line_height="1", text_align="center"),
+        rx.text(title, font_size="0.75rem", font_weight="600", color=WHITE,
+                 text_align="center", mt="0.3rem"),
+        text_align="center",
     )
 
 
@@ -235,25 +213,24 @@ def home_view() -> rx.Component:
             padding_bottom="80px",
             border_bottom="1px solid " + BORDER,
         ),
-        # How it works
+        # How it works — minimalista
         rx.box(
-            rx.text("COMO FUNCIONA", font_size="0.75rem", font_weight="700", color=GRAY_D,
-                     text_align="center", letter_spacing="0.08em", mb="2rem"),
+            rx.text("COMO FUNCIONA", font_size="0.7rem", font_weight="700", color=GRAY_D,
+                     text_align="center", letter_spacing="0.1em", mb="2rem"),
             rx.flex(
-                _step_card("1", "Escolha", "5 rounds de draft. Escolha qualquer jogador do time sorteado."),
-                _step_card("2", "Reroll", "Use seu reroll unico para trocar de time."),
-                _step_card("3", "Liga", "Enfrente 7 adversarios na fase de pontos."),
-                _step_card("4", "Playoffs", "Top 4 avancam para o mata-mata."),
-                _step_card("5", "Titulo", "Venca a Grande Final!"),
-                gap="1rem",
+                _how_to_step("1", "Escolha"),
+                _how_to_step("2", "Reroll"),
+                _how_to_step("3", "Liga"),
+                _how_to_step("4", "Playoffs"),
+                _how_to_step("5", "Titulo"),
+                gap="3rem",
                 justify="center",
                 flex_wrap="wrap",
-                max_w="1050px",
-                mx="auto",
             ),
             py="4rem",
             px="2rem",
             bg=BG,
+            border_top="1px solid " + BORDER,
         ),
         # Footer
         rx.box(
