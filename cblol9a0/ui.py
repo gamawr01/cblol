@@ -57,13 +57,10 @@ ROLE_ORDER = ["Top", "Jungle", "Mid", "ADC", "Support"]
 def navbar() -> rx.Component:
     return rx.box(
         rx.hstack(
-            rx.hstack(
-                rx.text("CBLOL", font_size="1.05rem", font_weight="800", color=WHITE,
-                         letter_spacing="0.02em"),
-                rx.text("9A0", font_size="0.7rem", font_weight="900", color=BG,
-                         bg=GOLD, px="0.35rem", py="0.1rem", border_radius="4px"),
-                gap="0.3rem",
-                align="center",
+            rx.image(
+                src="/assets/cblol9a0_logo_modern_horizontal.png",
+                height="30px",
+                width="auto",
             ),
             rx.spacer(),
             rx.cond(
