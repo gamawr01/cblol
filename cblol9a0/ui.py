@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import reflex as rx
 
-from .state import GameState, PlayerCard, HeroMapIcon, Matchup, GameEvent
+from .state import GameState, PlayerCard, LeagueRow, HeroMapIcon, Matchup, GameEvent
 
 # Paleta - Broadcast eSports: azul marinho + dourado + branco
 BG = "#0B1121"
@@ -59,6 +59,63 @@ def _champion_pin(icon: HeroMapIcon, idx: int) -> rx.Component:
         display="flex",
         flex_direction="column",
         align_items="center",
+    )
+
+
+def _champion_pin_small(icon: HeroMapIcon, idx: int) -> rx.Component:
+    """Pin clicavel pra league/playoffs — mostra card com info do jogador."""
+    is_open = GameState.selected_pin_idx == idx
+    player = rx.cond(
+        GameState.drafted_players.length() > idx,
+        GameState.drafted_players[idx],
+        PlayerCard(),
+    )
+    return rx.box(
+        rx.box(
+            rx.image(
+                src=icon.icon_url,
+                width="42px",
+                height="42px",
+                border_radius="50%",
+                border="3px solid " + GOLD,
+                box_shadow="0 0 10px rgba(201,168,76,0.6)",
+                cursor="pointer",
+                on_click=GameState.toggle_pin_info(idx),
+            ),
+            # Card de info ao clicar
+            rx.cond(
+                is_open,
+                rx.box(
+                    rx.text(player.name, font_weight="700", font_size="0.75rem", color=WHITE),
+                    rx.text(player.team, font_size="0.6rem", color=GRAY),
+                    rx.hstack(
+                        rx.text(player.year.to_string(), font_size="0.6rem", color=GRAY),
+                        rx.text("·", font_size="0.6rem", color=GRAY_D),
+                        rx.text("OVR " + player.overall.to_string(), font_size="0.65rem",
+                                 font_weight="800", color=GOLD),
+                        gap="0.2rem",
+                        align="center",
+                    ),
+                    bg=BG_SURFACE,
+                    border="1px solid " + BORDER,
+                    border_radius="0px",
+                    p="0.4rem 0.6rem",
+                    position="absolute",
+                    left="50px",
+                    top="0px",
+                    z_index="20",
+                    min_width="140px",
+                ),
+                rx.box(),
+            ),
+            position="relative",
+            display="inline-block",
+        ),
+        position="absolute",
+        top=icon.pin_top,
+        left=icon.pin_left,
+        transform="translate(-50%, -50%)",
+        z_index="10",
     )
 
 
@@ -166,6 +223,15 @@ def navbar() -> rx.Component:
                     ),
                     gap="0.3rem",
                     align="center",
+                ),
+                rx.box(),
+            ),
+            rx.cond(
+                GameState.screen == "league",
+                rx.text(
+                    "FASE DE LIGA",
+                    font_size="0.85rem", font_weight="600", color=WHITE,
+                    letter_spacing="0.04em",
                 ),
                 rx.box(),
             ),
@@ -794,137 +860,219 @@ def draft_view() -> rx.Component:
 
 # ====== LEAGUE VIEW ======
 
-def _league_match_row(m: Matchup, idx: int) -> rx.Component:
-    is_win = m.winner == GameState.player_team_name
-    is_loss = m.played & (m.winner != GameState.player_team_name)
-
-    bg_row = rx.cond(
-        is_win, "#0D3320",
-        rx.cond(is_loss, "#3B1010", BG_CARD),
-    )
-    bl = rx.cond(
-        is_win, "3px solid " + GREEN,
-        rx.cond(is_loss, "3px solid " + RED, "3px solid " + BORDER),
-    )
-
+def _league_table_row(entry: LeagueRow, idx: int) -> rx.Component:
+    is_player = entry.is_player
     return rx.box(
-        rx.flex(
-            rx.text(m.team_a, font_weight="600", font_size="0.8rem", color=WHITE,
-                     text_align="right", flex="1"),
-            rx.box(
-                rx.cond(
-                    m.played,
-                    rx.text(
-                        m.score_a.to_string() + " - " + m.score_b.to_string(),
-                        font_weight="800",
-                        font_size="1rem",
-                        color=GOLD,
-                        text_align="center",
-                    ),
-                    rx.text("VS", font_size="0.7rem", color=GRAY_D, font_weight="600",
-                             text_align="center", letter_spacing="0.06em"),
-                ),
-                min_w="4rem",
-                text_align="center",
-            ),
-            rx.text(m.team_b, font_weight="600", font_size="0.8rem", color=WHITE,
-                     text_align="left", flex="1"),
-            gap="0.6rem",
+        rx.hstack(
+            rx.text(idx + 1, font_weight="800", font_size="0.85rem",
+                     color=rx.cond(is_player, BG, GRAY_D), min_w="2rem", text_align="center"),
+            rx.text(entry.name, font_weight=rx.cond(is_player, "800", "600"),
+                     font_size="0.9rem",
+                     color=rx.cond(is_player, BG, WHITE), flex="1", truncate=True),
+            rx.text(entry.wins.to_string(), font_weight="700", font_size="0.9rem",
+                     color=rx.cond(is_player, BG, GREEN_L), min_w="2rem", text_align="center"),
+            rx.text(entry.losses.to_string(), font_weight="700", font_size="0.9rem",
+                     color=rx.cond(is_player, BG, RED), min_w="2rem", text_align="center"),
+            gap="0.35rem",
             align="center",
             width="100%",
         ),
-        p="0.7rem 1rem",
-        bg=bg_row,
-        border_radius="8px",
-        border_left=bl,
+        p="0.6rem 0.8rem",
+        bg=rx.cond(is_player, GOLD, BG_CARD),
+        border="1px solid " + rx.cond(is_player, GOLD, BORDER),
+        border_radius="0px",
+        width="100%",
+    )
+
+
+def _league_team_slot(p: PlayerCard, role: str) -> rx.Component:
+    filled = p.name != ""
+    return rx.box(
+        rx.hstack(
+            rx.image(
+                src=p.icon_url,
+                width="28px", height="28px",
+                border_radius="0px",
+                border="2px solid " + GOLD,
+            ),
+            rx.box(
+                rx.text(p.name, font_weight="600", font_size="0.65rem", color=WHITE, truncate=True),
+                rx.text(p.champion, font_size="0.55rem", color=GRAY, truncate=True),
+                flex="1",
+            ),
+            rx.text(role, font_size="0.5rem", font_weight="600", color=GRAY_D),
+            rx.text(p.overall.to_string(), font_weight="800", font_size="0.7rem", color=GOLD),
+            gap="0.3rem",
+            align="center",
+            width="100%",
+        ),
+        p="0.3rem 0.5rem",
+        bg=BG_SURFACE,
+        border="1px solid " + BORDER_L,
+        border_radius="0px",
         width="100%",
     )
 
 
 def league_view() -> rx.Component:
     return rx.box(
-        rx.text("FASE DE LIGA", font_size="0.7rem", font_weight="700", color=GRAY_D,
-                 text_align="center", letter_spacing="0.08em", mb="0.3rem"),
-        rx.text(
-            GameState.player_team_name,
-            font_size="1.3rem",
-            font_weight="800",
-            color=GOLD,
-            text_align="center",
-        ),
-        # W/L counter
-        rx.flex(
-            rx.box(
-                rx.text("V", font_size="0.6rem", color=GRAY_D, letter_spacing="0.06em"),
-                rx.text(GameState.league_wins.to_string(), font_size="1.4rem", font_weight="900", color=GREEN_L),
-                text_align="center",
-                flex="1",
-                bg=BG_CARD,
-                border_radius="8px",
-                p="0.6rem",
-            ),
-            rx.box(
-                rx.text("D", font_size="0.6rem", color=GRAY_D, letter_spacing="0.06em"),
-                rx.text(GameState.league_losses.to_string(), font_size="1.4rem", font_weight="900", color=RED),
-                text_align="center",
-                flex="1",
-                bg=BG_CARD,
-                border_radius="8px",
-                p="0.6rem",
-            ),
-            gap="1rem",
-            max_w="250px",
-            mx="auto",
-            mt="0.8rem",
-            mb="1.5rem",
-        ),
-        # Schedule
         rx.box(
-            rx.foreach(GameState.league_schedule, lambda m, i: _league_match_row(m, i)),
-            gap="0.4rem",
-            display="flex",
-            flex_direction="column",
-            width="100%",
-            max_w="550px",
-            mx="auto",
-        ),
-        rx.flex(
-            rx.cond(
-                GameState.league_complete,
-                rx.button(
-                    "IR PARA PLAYOFFS",
-                    on_click=GameState.init_playoffs,
-                    bg=GOLD,
-                    color=BG,
-                    font_weight="800",
-                    font_size="0.8rem",
-                    size="3",
-                    border_radius="8px",
-                    letter_spacing="0.04em",
+            rx.hstack(
+                # ===== COLUNA ESQUERDA (maior) — Classificação =====
+                rx.vstack(
+                    # Tabela
+                    rx.box(
+                        # Header da tabela
+                        rx.hstack(
+                            rx.text("#", font_size="0.55rem", font_weight="700", color=GRAY_D,
+                                     min_w="1.5rem", text_align="center"),
+                            rx.text("TIME", font_size="0.55rem", font_weight="700", color=GRAY_D,
+                                     flex="1"),
+                            rx.text("V", font_size="0.55rem", font_weight="700", color=GRAY_D,
+                                     min_w="1.5rem", text_align="center"),
+                            rx.text("D", font_size="0.55rem", font_weight="700", color=GRAY_D,
+                                     min_w="1.5rem", text_align="center"),
+                            gap="0.25rem",
+                            align="center",
+                            width="100%",
+                            pb="0.25rem",
+                        ),
+                        rx.foreach(
+                            GameState.league_table,
+                            _league_table_row,
+                        ),
+                        gap="0.2rem",
+                        display="flex",
+                        flex_direction="column",
+                        width="480px",
+                        mx="auto",
+                    ),
+                    rx.box(height="3rem"),
+                    # Próximo adversário + botão
+                    rx.cond(
+                        GameState.league_complete,
+                        rx.button(
+                            "IR PARA PLAYOFFS →",
+                            on_click=GameState.init_playoffs,
+                            bg=GOLD,
+                            color=BG,
+                            font_weight="800",
+                            font_size="0.9rem",
+                            padding="0.7rem 2.5rem",
+                            border_radius="0px",
+                            letter_spacing="0.05em",
+                            mt="2rem",
+                            _hover={"bg": GOLD_L, "transform": "scale(1.02)"},
+                        ),
+                        rx.box(
+                            rx.box(
+                                rx.text("PRÓXIMO ADVERSÁRIO", font_size="0.55rem",
+                                         font_weight="700", color=GRAY_D,
+                                         letter_spacing="0.06em", mb="0.3rem"),
+                                rx.text(GameState.next_opponent, font_size="1rem",
+                                         font_weight="800", color=WHITE),
+                                border_radius="0px",
+                                p="0.6rem 1rem",
+                                width="240px",
+                            ),
+                            rx.button(
+                                "JOGAR PRÓXIMA PARTIDA",
+                                on_click=GameState.start_match,
+                                bg=GOLD,
+                                color=BG,
+                                font_weight="800",
+                                font_size="0.9rem",
+                                padding="0.7rem 2.5rem",
+                                border_radius="0px",
+                                letter_spacing="0.05em",
+                                mt="0.75rem",
+                                disabled=GameState.match_in_progress,
+                                _hover={"bg": GOLD_L, "transform": "scale(1.02)"},
+                            ),
+                            display="flex",
+                            flex_direction="column",
+                            align_items="center",
+                            mt="2rem",
+                            width="100%",
+                        ),
+                    ),
+                    flex="2",
+                    min_w="300px",
+                    align_items="center",
                 ),
-                rx.button(
-                    "JOGAR PROXIMA PARTIDA",
-                    on_click=GameState.start_match,
-                    bg=GREEN,
-                    color=WHITE,
-                    font_weight="800",
-                    font_size="0.8rem",
-                    size="3",
-                    border_radius="8px",
-                    letter_spacing="0.04em",
-                    disabled=GameState.match_in_progress,
+                # ===== COLUNA DIREITA — Mapa + Time =====
+                rx.vstack(
+                    # Map
+                    rx.box(
+                        rx.box(
+                            rx.image(
+                                src="/summoners_rift_modern.png",
+                                width="100%",
+                                border_radius="0px",
+                                opacity="0.85",
+                            ),
+                            rx.foreach(
+                                GameState.draft_map_icons,
+                                _champion_pin_small,
+                            ),
+                            position="relative",
+                            border_radius="0px",
+                        ),
+                        width="100%",
+                        max_w="264px",
+                    ),
+                    # Nome do time + OVR
+                    rx.box(
+                        rx.text(GameState.player_team_name, font_weight="800", font_size="0.85rem",
+                                 color=WHITE, text_align="center"),
+                        rx.text("OVR " + GameState.team_overall.to_string(), font_weight="900",
+                                 font_size="1.2rem", color=GOLD, text_align="center"),
+                        bg=BG_SURFACE,
+                        border="1px solid " + BORDER,
+                        border_radius="0px",
+                        p="0.5rem 1rem",
+                        width="100%",
+                        max_w="264px",
+                        mt="0.75rem",
+                    ),
+                    # Lista do time
+                    rx.box(
+                        rx.text("TIME", font_size="0.6rem", font_weight="700",
+                                 color=GRAY_D, letter_spacing="0.06em", mb="0.35rem"),
+                        rx.vstack(
+                            _league_team_slot(GameState.drafted_slots[0], "Top"),
+                            _league_team_slot(GameState.drafted_slots[1], "Jungle"),
+                            _league_team_slot(GameState.drafted_slots[2], "Mid"),
+                            _league_team_slot(GameState.drafted_slots[3], "ADC"),
+                            _league_team_slot(GameState.drafted_slots[4], "Support"),
+                            gap="0.2rem",
+                            width="100%",
+                        ),
+                        width="100%",
+                        max_w="264px",
+                        mt="0.75rem",
+                    ),
+                    align_items="flex-start",
+                    min_w="220px",
+                    flex="1",
+                    pb="3rem",
                 ),
+                align="stretch",
+                width="100%",
+                max_width="1100px",
+                mx="auto",
+                mb="2rem",
             ),
-            justify="center",
-            mt="1.5rem",
+            display="flex",
+            justify_content="center",
             width="100%",
+            px="2rem",
         ),
-        max_w="700px",
-        mx="auto",
-        p="1.5rem",
+        rx.box(height="3rem"),
+        footer(),
         bg=BG,
         min_height="100vh",
-        padding_top="72px",
+        padding_top="90px",
     )
 
 

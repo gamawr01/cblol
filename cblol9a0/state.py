@@ -28,6 +28,13 @@ class PlayerCard(BaseModel):
     icon_url: str = ""
 
 
+class LeagueRow(BaseModel):
+    name: str = ""
+    wins: int = 0
+    losses: int = 0
+    is_player: bool = False
+
+
 class TeamCard(BaseModel):
     name: str = ""
     year: int = 0
@@ -86,14 +93,40 @@ def _team_to_card(t: Team) -> TeamCard:
     )
 
 
-def _build_schedule(player_team_name: str) -> list[Matchup]:
-    """Gera 7 partidas da fase de liga contra times aleatórios."""
+def _build_schedule(player_team_name: str) -> tuple[list[Matchup], list[list[Matchup]]]:
+    """
+    Retorna:
+      - 7 partidas do jogador (sem resultado)
+      - rodadas de confrontos entre outros times (sem resultado ainda)
+    """
     opponent_names = [t.display_name for t in ALL_TEAMS if t.display_name != player_team_name]
     chosen = random.sample(opponent_names, min(7, len(opponent_names)))
-    schedule = []
+
+    player_matches = []
     for opp in chosen:
-        schedule.append(Matchup(team_a=player_team_name, team_b=opp))
-    return schedule
+        player_matches.append(Matchup(team_a=player_team_name, team_b=opp))
+
+    # Round-robin entre os 7 outros times → 6 rodadas
+    teams = list(chosen)
+    n = len(teams)
+    fixed = teams[0]
+    rotating = teams[1:]
+    rounds = []
+
+    for _ in range(n - 1):
+        matches = []
+        matches.append((fixed, rotating[0]))
+        for i in range(1, (n - 1) // 2 + 1):
+            if i < len(rotating) - i:
+                matches.append((rotating[i], rotating[len(rotating) - i]))
+        rotating = [rotating[-1]] + rotating[:-1]
+
+        round_list = []
+        for a, b in matches:
+            round_list.append(Matchup(team_a=a, team_b=b))
+        rounds.append(round_list)
+
+    return player_matches, rounds
 
 
 class GameState(rx.State):
@@ -113,6 +146,20 @@ class GameState(rx.State):
         "Mid": ("49%", "47%"),
         "ADC": ("70%", "67%"),
         "Support": ("81%", "58%"),
+    }
+    SMALL_PIN_POSITIONS: dict[str, tuple[str, str]] = {
+        "Top": ("20%", "23%"),
+        "Jungle": ("28%", "40%"),
+        "Mid": ("48%", "46%"),
+        "ADC": ("72%", "69%"),
+        "Support": ("84%", "59%"),
+    }
+    LEAGUE_PIN_POSITIONS: dict[str, tuple[str, str]] = {
+        "Top": ("16%", "23%"),
+        "Jungle": ("29%", "40%"),
+        "Mid": ("48%", "46%"),
+        "ADC": ("72%", "69%"),
+        "Support": ("84%", "59%"),
     }
     hero_map_icons: list[HeroMapIcon] = []
 
@@ -149,6 +196,8 @@ class GameState(rx.State):
     # League
     player_team_name: str = "Meu Time"
     league_schedule: list[Matchup] = []
+    league_rounds: list[list[Matchup]] = []
+    league_round_index: int = 0
 
     # Match
     match_events: list[GameEvent] = []
@@ -184,6 +233,14 @@ class GameState(rx.State):
         return [mapping.get(r, PlayerCard()) for r in order]
 
     @rx.var
+    def team_overall(self) -> str:
+        """Overall medio do time draftado."""
+        if not self.drafted_players:
+            return "0"
+        total = sum(p.overall for p in self.drafted_players)
+        return str(round(total / len(self.drafted_players)))
+
+    @rx.var
     def league_wins(self) -> int:
         return sum(1 for m in self.league_schedule if m.played and m.winner == self.player_team_name)
 
@@ -203,6 +260,45 @@ class GameState(rx.State):
             if m.played:
                 return m.winner
         return ""
+
+    @rx.var
+    def next_opponent(self) -> str:
+        """Proximo adversario nao jogado."""
+        for m in self.league_schedule:
+            if not m.played:
+                opp = m.team_b if m.team_a == self.player_team_name else m.team_a
+                return opp
+        return ""
+
+    @rx.var
+    def league_table(self) -> list[LeagueRow]:
+        """Tabela de classificacao: 10 times ordenados por vitorias."""
+        all_teams = set()
+        all_teams.add(self.player_team_name)
+        for m in self.league_schedule:
+            all_teams.add(m.team_a)
+            all_teams.add(m.team_b)
+
+        table = []
+        for team_name in all_teams:
+            wins = 0
+            losses = 0
+            for m in self.league_schedule:
+                if not m.played:
+                    continue
+                if m.winner == team_name:
+                    wins += 1
+                elif team_name in (m.team_a, m.team_b):
+                    losses += 1
+            table.append(LeagueRow(
+                name=team_name,
+                wins=wins,
+                losses=losses,
+                is_player=team_name == self.player_team_name,
+            ))
+
+        table.sort(key=lambda x: x.wins, reverse=True)
+        return table
 
     # --- Draft Handlers ---
 
@@ -242,7 +338,7 @@ class GameState(rx.State):
 
         # Adiciona pin no mapa do draft
         champ_name = player.champion
-        pos = self.HERO_PIN_POSITIONS.get(player.role, ("50%", "50%"))
+        pos = self.SMALL_PIN_POSITIONS.get(player.role, ("50%", "50%"))
         new_icon = HeroMapIcon(
             name=player.name,
             role=player.role,
@@ -291,11 +387,44 @@ class GameState(rx.State):
             name = "Meu Time"
         self.player_team_name = name
 
-        self.league_schedule = _build_schedule(self.player_team_name)
+        player_matches, rounds = _build_schedule(self.player_team_name)
+        self.league_schedule = player_matches
+        self.league_rounds = rounds
+        self.league_round_index = 0
+        # Recalcula pins com posições da liga
+        league_icons = []
+        for p in self.drafted_players:
+            champ_name = p.champion
+            pos = self.LEAGUE_PIN_POSITIONS.get(p.role, ("50%", "50%"))
+            league_icons.append(HeroMapIcon(
+                name=p.name,
+                role=p.role,
+                champion=champ_name,
+                icon_url=f"https://ddragon.leagueoflegends.com/cdn/14.10.1/img/champion/{champ_name}.png",
+                pin_top=pos[0],
+                pin_left=pos[1],
+            ))
+        self.draft_map_icons = league_icons
         self.playoff_bracket = []
         self.playoff_round = 0
         self.champion_team = ""
         self.screen = "league"
+
+    def _reveal_round(self):
+        """Revela a proxima rodada de confrontos entre outros times com resultados."""
+        if self.league_round_index >= len(self.league_rounds):
+            return
+        round_matches = self.league_rounds[self.league_round_index]
+        self.league_round_index += 1
+        for m in round_matches:
+            winner = m.team_a if random.random() < 0.5 else m.team_b
+            score_a = 1 if winner == m.team_a else 0
+            score_b = 1 if winner == m.team_b else 0
+            self.league_schedule.append(Matchup(
+                team_a=m.team_a, team_b=m.team_b,
+                score_a=score_a, score_b=score_b,
+                played=True, winner=winner,
+            ))
 
     def start_match(self):
         # Find first unplayed matchup
@@ -415,6 +544,7 @@ class GameState(rx.State):
                 else:
                     new_schedule.append(m)
             self.league_schedule = new_schedule
+            self._reveal_round()
             self.match_in_progress = False
             self.screen = "result"
 
@@ -514,6 +644,8 @@ class GameState(rx.State):
         self.team_name_input = "Meu Time"
         self.player_team_name = "Meu Time"
         self.league_schedule = []
+        self.league_rounds = []
+        self.league_round_index = 0
         self.match_events = []
         self.events_shown = 0
         self.match_in_progress = False
