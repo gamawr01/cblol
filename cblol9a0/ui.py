@@ -31,6 +31,124 @@ ROLE_ICONS = {
 # Hero champions are now randomized via GameState.hero_map_icons
 
 
+def tag_pill(tag: rx.Var) -> rx.Component:
+    """Renderiza uma tag como pill. tag é um Var[str] vindo de rx.foreach."""
+    bg = rx.match(
+        tag,
+        ("carry",             "#FEF3C7"),
+        ("veteran",           "#EDE9FE"),
+        ("forte_1v1",         "#FEE2E2"),
+        ("teamplayer",        "#DBEAFE"),
+        ("objective_control", "#D1FAE5"),
+        ("playmaker",         "#FCE7F3"),
+        ("early_game",        "#FEF9C3"),
+        ("late_game",         "#F3E8FF"),
+        ("jungle_ladrao",     "#FFEDD5"),
+        ("jungle_agressivo",  "#FEE2E2"),
+        ("clutch",            "#FDF4FF"),
+        ("consistente",       "#F0FDF4"),
+        ("internacional",     "#EFF6FF"),
+        "#F3F4F6",
+    )
+    color = rx.match(
+        tag,
+        ("carry",             "#92400E"),
+        ("veteran",           "#5B21B6"),
+        ("forte_1v1",         "#991B1B"),
+        ("teamplayer",        "#1E40AF"),
+        ("objective_control", "#065F46"),
+        ("playmaker",         "#9D174D"),
+        ("early_game",        "#854D0E"),
+        ("late_game",         "#6B21A8"),
+        ("jungle_ladrao",     "#9A3412"),
+        ("jungle_agressivo",  "#7F1D1D"),
+        ("clutch",            "#701A75"),
+        ("consistente",       "#14532D"),
+        ("internacional",     "#1E3A5F"),
+        "#374151",
+    )
+    label = rx.match(
+        tag,
+        ("carry",             "Carry"),
+        ("veteran",           "Veteran"),
+        ("forte_1v1",         "1v1"),
+        ("teamplayer",        "Team Player"),
+        ("objective_control", "Objetivos"),
+        ("playmaker",         "Playmaker"),
+        ("early_game",        "Early Game"),
+        ("late_game",         "Late Game"),
+        ("jungle_ladrao",     "Ladrão"),
+        ("jungle_agressivo",  "Agressivo"),
+        ("clutch",            "Clutch"),
+        ("consistente",       "Consistente"),
+        ("internacional",     "Internacional"),
+        tag,
+    )
+    return rx.box(
+        rx.text(label, font_size="0.65rem", font_weight="600", color=color),
+        bg=bg,
+        border_radius="99px",
+        px="0.5rem",
+        py="0.15rem",
+        display="inline-block",
+    )
+
+
+def team_attr_pill(attr: rx.Var) -> rx.Component:
+    """Renderiza um atributo de time como pill. attr é um Var[str]."""
+    bg = rx.match(
+        attr,
+        ("botlane_forte",     "#FEF3C7"),
+        ("toplane_dominante", "#FEE2E2"),
+        ("jungle_pressao",    "#FFEDD5"),
+        ("mid_carry",         "#F3E8FF"),
+        ("stompa_early",      "#FEF9C3"),
+        ("time_coeso",        "#DBEAFE"),
+        ("star_player",       "#FEF3C7"),
+        ("comunicacao_falha", "#FEE2E2"),
+        ("time_veterano",     "#EDE9FE"),
+        ("time_jovem",        "#D1FAE5"),
+        "#F3F4F6",
+    )
+    color = rx.match(
+        attr,
+        ("botlane_forte",     "#92400E"),
+        ("toplane_dominante", "#991B1B"),
+        ("jungle_pressao",    "#9A3412"),
+        ("mid_carry",         "#6B21A8"),
+        ("stompa_early",      "#854D0E"),
+        ("time_coeso",        "#1E40AF"),
+        ("star_player",       "#78350F"),
+        ("comunicacao_falha", "#7F1D1D"),
+        ("time_veterano",     "#5B21B6"),
+        ("time_jovem",        "#065F46"),
+        "#374151",
+    )
+    label = rx.match(
+        attr,
+        ("botlane_forte",     "Bot Forte"),
+        ("toplane_dominante", "Top Dominante"),
+        ("jungle_pressao",    "Pressão JG"),
+        ("mid_carry",         "Mid Carry"),
+        ("stompa_early",      "Stompa Early"),
+        ("time_coeso",        "Time Coeso"),
+        ("star_player",       "Star Player"),
+        ("comunicacao_falha", "Comm Falha"),
+        ("time_veterano",     "Time Veterano"),
+        ("time_jovem",        "Time Jovem"),
+        attr,
+    )
+    return rx.box(
+        rx.text(label, font_size="0.65rem", font_weight="700", color=color),
+        bg=bg,
+        border="1px solid " + color,
+        border_radius="99px",
+        px="0.6rem",
+        py="0.2rem",
+        display="inline-block",
+    )
+
+
 def _champion_pin(icon: HeroMapIcon, idx: int) -> rx.Component:
     """Pin simples pra home — sem clique, sem info."""
     return rx.box(
@@ -574,6 +692,14 @@ def _draft_player_card(p: PlayerCard, idx: int) -> rx.Component:
                 color=rx.cond(disabled, GRAY_D, GOLD),
                 mt="0.2rem",
             ),
+            # Tags
+            rx.flex(
+                rx.foreach(p.tags, tag_pill),
+                flex_wrap="wrap",
+                gap="0.15rem",
+                justify="center",
+                px="0.1rem",
+            ),
             # Overall
             rx.text(
                 p.overall.to_string(),
@@ -820,7 +946,18 @@ def draft_view() -> rx.Component:
                     # Meu Time
                     rx.box(
                         rx.text("MEU TIME", font_size="0.65rem", font_weight="700",
-                                 color=GRAY_D, letter_spacing="0.08em", mb="0.5rem"),
+                                 color=GRAY_D, letter_spacing="0.08em", mb="0.35rem"),
+                        # Atributos do time
+                        rx.cond(
+                            GameState.draft_round > 0,
+                            rx.flex(
+                                rx.foreach(GameState.player_team_attributes, team_attr_pill),
+                                flex_wrap="wrap",
+                                gap="0.25rem",
+                                mb="0.5rem",
+                            ),
+                            rx.box(),
+                        ),
                         rx.vstack(
                             _draft_my_team_slot(GameState.drafted_slots[0], "Top"),
                             _draft_my_team_slot(GameState.drafted_slots[1], "Jungle"),
@@ -1027,6 +1164,13 @@ def league_view() -> rx.Component:
                                  color=WHITE, text_align="center"),
                         rx.text("OVR " + GameState.team_overall.to_string(), font_weight="900",
                                  font_size="1.2rem", color=GOLD, text_align="center"),
+                        rx.flex(
+                            rx.foreach(GameState.player_team_attributes, team_attr_pill),
+                            flex_wrap="wrap",
+                            gap="0.25rem",
+                            justify="center",
+                            mt="0.3rem",
+                        ),
                         bg=BG_SURFACE,
                         border="1px solid " + BORDER,
                         border_radius="0px",
@@ -1271,6 +1415,18 @@ def result_view() -> rx.Component:
                 color=GRAY_D,
                 mt="0.4rem",
             ),
+            # Atributos do time (se venceu)
+            rx.cond(
+                is_win,
+                rx.flex(
+                    rx.foreach(GameState.player_team_attributes, team_attr_pill),
+                    flex_wrap="wrap",
+                    gap="0.3rem",
+                    justify="center",
+                    mt="0.5rem",
+                ),
+                rx.box(),
+            ),
             rx.flex(
                 rx.cond(
                     GameState.league_complete,
@@ -1399,9 +1555,20 @@ def playoffs_view() -> rx.Component:
                          text_align="center", letter_spacing="0.08em"),
                 rx.text(GameState.champion_team, font_size="1.8rem", font_weight="900", color=WHITE,
                          text_align="center", mt="0.3rem"),
+                rx.cond(
+                    GameState.champion_team == GameState.player_team_name,
+                    rx.flex(
+                        rx.foreach(GameState.player_team_attributes, team_attr_pill),
+                        flex_wrap="wrap",
+                        gap="0.3rem",
+                        justify="center",
+                        mt="0.5rem",
+                    ),
+                    rx.box(),
+                ),
                 bg=BG_SURFACE,
                 p="2rem",
-                border_radius="12px",
+                border_radius="0px",
                 border="2px solid " + GOLD,
                 max_w="500px",
                 mx="auto",

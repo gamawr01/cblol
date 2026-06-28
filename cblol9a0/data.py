@@ -12,6 +12,7 @@ class Player:
     team: str
     year: int
     nationality: str = "BR"
+    tags: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -601,3 +602,60 @@ def reset_pool():
     """Reseta o pool de times para o início."""
     global TEAM_POOL
     TEAM_POOL = list(ALL_TEAMS)
+
+
+def _calc_player_team_attrs(players: list[Player]) -> list[str]:
+    """Calcula atributos do time baseado nos jogadores selecionados.
+    Retorna lista de strings com os atributos (ex: 'botlane_forte', 'star_player')."""
+    attrs = []
+    if not players:
+        return attrs
+
+    # Mapeia jogadores por role
+    by_role = {p.role: p for p in players}
+
+    # Bot lane forte: ADC e Support ambos overall >= 80
+    adc = by_role.get("ADC")
+    supp = by_role.get("Support")
+    if adc and supp and adc.overall >= 80 and supp.overall >= 80:
+        attrs.append("botlane_forte")
+
+    # Top dominante: Top overall >= 85
+    top = by_role.get("Top")
+    if top and top.overall >= 85:
+        attrs.append("toplane_dominante")
+
+    # Mid carry: Mid overall >= 85
+    mid = by_role.get("Mid")
+    if mid and mid.overall >= 85:
+        attrs.append("mid_carry")
+
+    # Time coeso: todos os jogadores do mesmo time original
+    teams = set(p.team for p in players)
+    if len(teams) == 1:
+        attrs.append("time_coeso")
+
+    # Time veterano: media de anos dos players >= 3 (contando de 2025)
+    avg_year = sum(2025 - p.year for p in players) / len(players)
+    if avg_year >= 4:
+        attrs.append("time_veterano")
+
+    # Time jovem: media de anos < 2
+    if avg_year < 2:
+        attrs.append("time_jovem")
+
+    # Star player: alguem com overall >= 90
+    if any(p.overall >= 90 for p in players):
+        attrs.append("star_player")
+
+    # Stompa early: media overall >= 82
+    avg_ovr = sum(p.overall for p in players) / len(players)
+    if avg_ovr >= 82:
+        attrs.append("stompa_early")
+
+    # Pressao JG: Jungle overall >= 82
+    jg = by_role.get("Jungle")
+    if jg and jg.overall >= 82:
+        attrs.append("jungle_pressao")
+
+    return attrs

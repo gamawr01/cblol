@@ -26,6 +26,7 @@ class PlayerCard(BaseModel):
     team: str = ""
     year: int = 0
     icon_url: str = ""
+    tags: list[str] = []
 
 
 class LeagueRow(BaseModel):
@@ -78,6 +79,7 @@ def _player_to_card(p: Player) -> PlayerCard:
         team=p.team,
         year=p.year,
         icon_url=champion_icon_url(p.champion),
+        tags=p.tags,
     )
 
 
@@ -231,6 +233,19 @@ class GameState(rx.State):
         mapping = {p.role: p for p in self.drafted_players}
         order = ["Top", "Jungle", "Mid", "ADC", "Support"]
         return [mapping.get(r, PlayerCard()) for r in order]
+
+    @rx.var
+    def player_team_attributes(self) -> list[str]:
+        """Calcula atributos do time montado pelo jogador em tempo real."""
+        from .data import _calc_player_team_attrs
+        return _calc_player_team_attrs(self.drafted_players)
+
+    @rx.var
+    def player_team_overall(self) -> float:
+        """OVR medio do time do jogador."""
+        if not self.drafted_players:
+            return 0.0
+        return sum(p.overall for p in self.drafted_players) / len(self.drafted_players)
 
     @rx.var
     def team_overall(self) -> str:
