@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import reflex as rx
 
-from .state import GameState, PlayerCard, Matchup, GameEvent
+from .state import GameState, PlayerCard, HeroMapIcon, Matchup, GameEvent
 
 # Paleta - Broadcast eSports: azul marinho + dourado + branco
 BG = "#0B1121"
@@ -28,13 +28,96 @@ ROLE_ICONS = {
     "Support": "https://ddragon.leagueoflegends.com/cdn/14.10.1/img/spell/SummonerGuardian.png",
 }
 
-HERO_CHAMPIONS = {
-    "Top": "https://ddragon.leagueoflegends.com/cdn/14.10.1/img/champion/Garen.png",
-    "Jungle": "https://ddragon.leagueoflegends.com/cdn/14.10.1/img/champion/LeeSin.png",
-    "Mid": "https://ddragon.leagueoflegends.com/cdn/14.10.1/img/champion/Syndra.png",
-    "ADC": "https://ddragon.leagueoflegends.com/cdn/14.10.1/img/champion/Jinx.png",
-    "Support": "https://ddragon.leagueoflegends.com/cdn/14.10.1/img/champion/Thresh.png",
-}
+# Hero champions are now randomized via GameState.hero_map_icons
+
+
+def _champion_pin(icon: HeroMapIcon, idx: int) -> rx.Component:
+    """Pin simples pra home — sem clique, sem info."""
+    return rx.box(
+        rx.image(
+            src=icon.icon_url,
+            width="50px",
+            height="50px",
+            border_radius="50%",
+            border="3px solid #52B788",
+            box_shadow="0 0 14px rgba(82,183,136,0.7)",
+        ),
+        rx.text(
+            icon.role,
+            font_size="0.6rem",
+            font_weight="700",
+            color="#52B788",
+            text_align="center",
+            mt="2px",
+            letter_spacing="0.05em",
+        ),
+        position="absolute",
+        top=icon.pin_top,
+        left=icon.pin_left,
+        transform="translate(-50%, -50%)",
+        z_index="10",
+        display="flex",
+        flex_direction="column",
+        align_items="center",
+    )
+
+
+def _draft_champion_pin(icon: HeroMapIcon, idx: int) -> rx.Component:
+    """Pin clicavel pro draft — mostra card com info do jogador."""
+    is_open = GameState.selected_pin_idx == idx
+    player = rx.cond(
+        GameState.drafted_players.length() > idx,
+        GameState.drafted_players[idx],
+        PlayerCard(),
+    )
+    return rx.box(
+        rx.box(
+            rx.image(
+                src=icon.icon_url,
+                width="45px",
+                height="45px",
+                border_radius="50%",
+                border="3px solid " + GOLD,
+                box_shadow="0 0 14px rgba(201,168,76,0.7)",
+                cursor="pointer",
+                on_click=GameState.toggle_pin_info(idx),
+            ),
+            # Card de info ao clicar
+            rx.cond(
+                is_open,
+                rx.box(
+                    rx.text(player.name, font_weight="700", font_size="0.75rem", color=WHITE),
+                    rx.text(player.team, font_size="0.6rem", color=GRAY),
+                    rx.hstack(
+                        rx.text(player.year.to_string(), font_size="0.6rem", color=GRAY),
+                        rx.text("·", font_size="0.6rem", color=GRAY_D),
+                        rx.text("OVR " + player.overall.to_string(), font_size="0.65rem",
+                                 font_weight="800", color=GOLD),
+                        gap="0.2rem",
+                        align="center",
+                    ),
+                    bg=BG_SURFACE,
+                    border="1px solid " + BORDER,
+                    border_radius="0px",
+                    p="0.4rem 0.6rem",
+                    position="absolute",
+                    left="55px",
+                    top="0px",
+                    z_index="20",
+                    min_width="140px",
+                ),
+                rx.box(),
+            ),
+            position="relative",
+            display="inline-block",
+        ),
+        position="absolute",
+        top=icon.pin_top,
+        left=icon.pin_left,
+        transform="translate(-50%, -50%)",
+        z_index="10",
+    )
+
 
 RARITY_COLORS = {
     "Legendary": ("#3D2E0A", "#F59E0B", "#FEF3C7"),
@@ -57,45 +140,36 @@ ROLE_ORDER = ["Top", "Jungle", "Mid", "ADC", "Support"]
 def navbar() -> rx.Component:
     return rx.box(
         rx.hstack(
-            rx.image(
-                src="/assets/cblol9a0_logo_modern_horizontal.png",
-                height="30px",
-                width="auto",
+            rx.link(
+                rx.image(
+                    src="/cblol9a0_logo_modern_horizontal.png",
+                    height="90px",
+                    width="auto",
+                    filter="brightness(0) invert(1)",
+                ),
+                on_click=GameState.restart,
             ),
             rx.spacer(),
             rx.cond(
                 GameState.screen == "draft",
                 rx.hstack(
                     rx.text(
-                        GameState.draft_round.to_string(),
-                        font_size="0.85rem", font_weight="800", color=GOLD,
+                        "DRAFT",
+                        font_size="0.85rem", font_weight="600", color=WHITE,
+                        letter_spacing="0.04em",
                     ),
-                    rx.text("/5 preenchidas", font_size="0.7rem", color=GRAY),
-                    gap="0.25rem",
+                    rx.text("·", font_size="0.85rem", color=WHITE),
+                    rx.text(
+                        GameState.draft_round.to_string() + " / 5",
+                        font_size="1.1rem", font_weight="800", color=GOLD,
+                        text_align="center",
+                    ),
+                    gap="0.3rem",
                     align="center",
-                    bg=BG_SURFACE,
-                    px="0.7rem",
-                    py="0.3rem",
-                    border_radius="6px",
                 ),
                 rx.box(),
             ),
             rx.spacer(),
-            rx.cond(
-                GameState.screen != "home",
-                rx.button(
-                    "REINICIAR",
-                    on_click=GameState.restart,
-                    variant="outline",
-                    size="1",
-                    color=GRAY_D,
-                    bg="transparent",
-                    font_size="0.65rem",
-                    font_weight="700",
-                    letter_spacing="0.04em",
-                ),
-                rx.box(),
-            ),
             width="100%",
             align="center",
             px="2rem",
@@ -106,7 +180,7 @@ def navbar() -> rx.Component:
         top="0",
         z_index="50",
         width="100%",
-        height="56px",
+        height="90px",
         border_bottom="1px solid " + BORDER,
     )
 
@@ -123,394 +197,598 @@ def _how_to_step(num: str, title: str) -> rx.Component:
     )
 
 
+
 def home_view() -> rx.Component:
+    # Cores extra p/ esta view
+    BG_DARK = "#1A1A2E"
+    BG_LIGHT = "#F5F0E8"
+    DARK_TEXT = "#111827"
+    GREENAccent = "#2D6A4F"
+    GREEN_L_ACCENT = "#52B788"
+    BLUE_CHANCE = "#3B82F6"
+
+    # Dados de raridade
+    RARITY_CARDS = [
+        {
+            "label": "⭐ LEGENDARY",
+            "color": GOLD,
+            "border_top": "3px solid " + GOLD,
+            "bg": "rgba(201,168,76,0.08)",
+            "chance": "15% de chance",
+            "desc": "Times campeões com histórico internacional marcante",
+            "examples": "paiN 2015 • INTZ 2016 • LOUD 2022",
+            "examples_color": GOLD,
+        },
+        {
+            "label": "🔵 HISTORIC",
+            "color": BLUE_CHANCE,
+            "border_top": "3px solid " + BLUE_CHANCE,
+            "bg": "rgba(59,130,246,0.08)",
+            "chance": "35% de chance",
+            "desc": "Todos os times campeões do CBLOL",
+            "examples": "RED 2017 • KaBuM 2018 • paiN 2021",
+            "examples_color": BLUE_CHANCE,
+        },
+        {
+            "label": "⚪ COMMON",
+            "color": "#9CA3AF",
+            "border_top": "3px solid #9CA3AF",
+            "bg": "rgba(156,163,175,0.08)",
+            "chance": "50% de chance",
+            "desc": "Finalistas e participantes marcantes do CBLOL",
+            "examples": "Keyd 2021 • Fluxo 2023 • Vorax 2021",
+            "examples_color": "#9CA3AF",
+        },
+    ]
+
+    # Dados dos 5 steps
+    HOW_STEPS = [
+        ("1", "Escolha seu time", "Cada round sorteie um time histórico e escolha 1 jogador"),
+        ("2", "Reroll estratégico", "Use seu reroll único para tentar um time melhor"),
+        ("3", "Fase de liga", "7 partidas contra times históricos da CPU"),
+        ("4", "Playoffs", "Top 4 avançam para semifinais e grande final"),
+        ("5", "Seja campeão", "Vença a grande final e entre para a história"),
+        ]
+
     return rx.box(
-        # Hero — 2 colunas: texto + mapa
-        rx.flex(
-            # Coluna esquerda — textual
-            rx.box(
-                rx.text(
-                    "FANTASY GAME",
-                    font_size="0.75rem",
-                    font_weight="700",
-                    color=GRAY,
-                    letter_spacing="0.12em",
-                ),
-                rx.text(
-                    "MONTE O TIME",
-                    font_size="min(4.5rem, 8vw)",
-                    font_weight="900",
-                    color=WHITE,
-                    line_height="1.05",
-                    letter_spacing="-0.02em",
-                    mt="0.4rem",
-                ),
-                rx.text(
-                    "DOS SONHOS",
-                    font_size="min(4.5rem, 8vw)",
-                    font_weight="900",
-                    color=GOLD,
-                    line_height="1.05",
-                    letter_spacing="-0.02em",
-                ),
-                rx.text(
-                    "Drafte jogadores historicos do CBLOL e dispute a liga.",
-                    font_size="1rem",
-                    color=GRAY_D,
-                    mt="1.2rem",
-                    line_height="1.5",
-                    max_w="420px",
-                ),
-                rx.button(
-                    "INICIAR DRAFT",
-                    on_click=GameState.init_draft,
-                    bg=GOLD,
-                    color=BG,
-                    font_weight="800",
-                    font_size="1.1rem",
-                    px="3rem",
-                    py="1rem",
-                    border_radius="10px",
-                    mt="2rem",
-                    cursor="pointer",
-                    letter_spacing="0.05em",
-                    _hover={
-                        "bg": GOLD_L,
-                        "transform": "translateY(-2px)",
-                        "box_shadow": "0 8px 24px rgba(201, 168, 76, 0.25)",
-                    },
-                ),
-                flex="1",
-                min_w="280px",
-            ),
-            # Coluna direita — mapa
-            rx.box(
-                rx.image(
-                    src="/assets/summoners_rift_modern.png",
-                    width="100%",
-                    height="auto",
-                    border_radius="12px",
-                    border="1px solid " + BORDER,
-                    box_shadow="0 0 40px rgba(201, 168, 76, 0.08)",
-                ),
-                flex="1",
-                min_w="280px",
-                display="flex",
-                align_items="center",
-                justify_content="center",
-            ),
-            gap="3rem",
-            align="center",
-            justify="center",
-            width="100%",
-            max_w="1100px",
-            mx="auto",
-            flex_wrap="wrap",
-            py="6rem",
-            px="2rem",
-            bg=BG,
-            padding_top="120px",
-            padding_bottom="80px",
-            border_bottom="1px solid " + BORDER,
-        ),
-        # How it works — minimalista
-        rx.box(
-            rx.text("COMO FUNCIONA", font_size="0.7rem", font_weight="700", color=GRAY_D,
-                     text_align="center", letter_spacing="0.1em", mb="2rem"),
-            rx.flex(
-                _how_to_step("1", "Escolha"),
-                _how_to_step("2", "Reroll"),
-                _how_to_step("3", "Liga"),
-                _how_to_step("4", "Playoffs"),
-                _how_to_step("5", "Titulo"),
-                gap="3rem",
-                justify="center",
-                flex_wrap="wrap",
-            ),
-            py="4rem",
-            px="2rem",
-            bg=BG,
-            border_top="1px solid " + BORDER,
-        ),
-        # Footer simplificado
+        # ===========================================================
+        # SEÇÃO 1 — Hero (fundo escuro, duas colunas)
+        # ===========================================================
         rx.box(
             rx.hstack(
-                rx.text("CBLOL", font_weight="800", color=WHITE, font_size="0.9rem"),
-                rx.text("9A0", font_size="0.65rem", font_weight="800", color=BG,
-                         bg=GOLD, px="0.3rem", py="0.05rem", border_radius="3px"),
-                gap="0.2rem",
+                # ---------- Coluna esquerda (textual) ----------
+                rx.box(
+                    rx.text(
+                                            "CBLOL 9A0",
+                                            font_size="0.75rem",
+                                            font_weight="600",
+                                            color=GREEN_L,
+                                            letter_spacing="0.15em",
+                                        ),
+                                        rx.box(
+                                            rx.text(
+                                                "MONTE O TIME",
+                                                font_size="clamp(2.8rem, 5vw, 4.5rem)",
+                                                font_weight="900",
+                                                color=WHITE,
+                                                line_height="1.05",
+                                            ),
+                                            rx.text(
+                                                "DOS SONHOS",
+                                                font_size="clamp(2.8rem, 5vw, 4.5rem)",
+                                                font_weight="900",
+                                                color=GOLD,
+                                                line_height="1.05",
+                                            ),
+                                        ),
+                                        rx.text(
+                                            "Drafte uma seleção histórica: sai um time e uma liga. Escale um craque que esteve lá, complete o elenco e dispute — seu time faz 9A0?",
+                                            font_size="1.05rem",
+                                            color="#9CA3AF",
+                                            max_width="440px",
+                                            mt="1rem",
+                                            line_height="1.5",
+                                        ),
+                    # Stats pills — removido
+                    # CTA Button
+                    rx.button(
+                        "COMEÇAR DRAFT →",
+                        on_click=GameState.init_draft,
+                        bg=WHITE,
+                        color=BG_DARK,
+                        font_size="1.3rem",
+                        font_weight="800",
+                        letter_spacing="0.06em",
+                        padding="1.2rem 3rem",
+                        border_radius="0px",
+                        mt="2rem",
+                        cursor="pointer",
+                        _hover={
+                            "bg": GOLD,
+                            "color": BG_DARK,
+                            "transform": "scale(1.04)",
+                        },
+                    ),
+                    flex="1",
+                    padding="4rem 3rem",
+                    display="flex",
+                    flex_direction="column",
+                    justify_content="center",
+                    align_items="flex-start",
+                    min_width="280px",
+                ),
+                # ---------- Coluna direita (mapa) ----------
+                                rx.box(
+                                    rx.box(
+                                        rx.image(
+                                            src="/summoners_rift_modern.png",
+                                            width="100%",
+                                            border_radius="12px",
+                                            opacity="0.9",
+                                        ),
+                                                                                rx.foreach(
+                                            GameState.hero_map_icons,
+                                            _champion_pin,
+                                        ),
+                                        position="relative",
+                                        bg="rgba(255,255,255,0.04)",
+                                        border="1px solid rgba(255,255,255,0.08)",
+                                        border_radius="20px",
+                                        padding="1.5rem",
+                                    ),
+                                    width="480px",
+                                    display="flex",
+                                    align_items="center",
+                                    justify_content="center",
+                                    min_width="280px",
+                                ),
+                gap="2rem",
                 align="center",
+                justify_content="center",
+                width="100%",
+                max_width="1100px",
+                margin_x="auto",
+                flex_wrap="wrap",
             ),
-            rx.text(
-                "Jogo de draft historico do cenario brasileiro de League of Legends.",
-                font_size="0.7rem", color=GRAY_D, mt="0.4rem",
-            ),
-            rx.text(
-                "2025 CBLOL 9A0. League of Legends e propriedade da Riot Games.",
-                font_size="0.65rem", color=GRAY_D, mt="0.3rem",
-            ),
-            bg=BG_CARD,
+            bg=BG_DARK,
+            min_height="calc(100vh - 90px)",
+            padding_top="90px",
             width="100%",
-            py="2rem",
-            px="2rem",
-            display="flex",
-            flex_direction="column",
-            align_items="center",
-            text_align="center",
-            border_top="1px solid " + BORDER,
         ),
+
+        # ===========================================================
+                # SEÇÃO 2 — Como Funciona (padrão visual do site)
+                # ===========================================================
+                rx.box(
+                    rx.text(
+                        "COMO FUNCIONA",
+                        font_size="0.7rem",
+                        font_weight="700",
+                        color=GRAY_D,
+                        text_align="center",
+                        letter_spacing="0.1em",
+                        mb="0.5rem",
+                    ),
+                    rx.text(
+                        "5 rounds de draft. 7 partidas. Um campeão.",
+                        font_size="1rem",
+                        color=GRAY,
+                        text_align="center",
+                        margin_bottom="2.5rem",
+                    ),
+                    rx.flex(
+                        *[
+                            rx.box(
+                                rx.text(
+                                    step[0],
+                                    font_size="1.8rem",
+                                    font_weight="900",
+                                    color=GOLD,
+                                    line_height="1",
+                                    text_align="center",
+                                ),
+                                rx.text(
+                                    step[1],
+                                    font_size="0.7rem",
+                                    font_weight="600",
+                                    color=WHITE,
+                                    text_align="center",
+                                    mt="0.4rem",
+                                ),
+                                rx.text(
+                                    step[2],
+                                    font_size="0.6rem",
+                                    color=GRAY_D,
+                                    text_align="center",
+                                    margin_top="0.2rem",
+                                    line_height="1.3",
+                                ),
+                                width="100%",
+                                padding="1rem 0.75rem",
+                                bg=BG_CARD,
+                                border="1px solid " + BORDER,
+                                border_radius="10px",
+                                _hover={
+                                    "bg": BG_SURFACE,
+                                    "border_color": GOLD,
+                                    "transition": "all 0.15s",
+                                },
+                            )
+                            for step in HOW_STEPS
+                        ],
+                        flex_wrap="nowrap",
+                        justify_content="center",
+                        gap="0.75rem",
+                        width="100%",
+                        max_width="750px",
+                        margin_x="auto",
+                    ),
+                    bg=BG_DARK,
+                    padding="3rem 2rem",
+                    width="100%",
+                ),
+
+                footer(),
+
         width="100%",
     )
 
 
+def footer() -> rx.Component:
+    return rx.box(
+        rx.hstack(
+            rx.text("CBLOL", font_weight="800", color=WHITE, font_size="0.9rem"),
+            rx.text("9A0", font_size="0.65rem", font_weight="800", color=BG,
+                     bg=GOLD, px="0.3rem", py="0.05rem", border_radius="0px"),
+            gap="0.2rem",
+            align="center",
+        ),
+        rx.text(
+            "Jogo de draft histórico do cenário brasileiro de League of Legends.",
+            font_size="0.7rem", color=GRAY_D, mt="0.4rem",
+            text_align="center",
+        ),
+        rx.text(
+            "2025 CBLOL 9A0. League of Legends é propriedade da Riot Games.",
+            font_size="0.65rem", color=GRAY_D, mt="0.3rem",
+            text_align="center",
+        ),
+        bg=BG_CARD,
+        width="100%",
+        py="2rem",
+        px="2rem",
+        display="flex",
+        flex_direction="column",
+        align_items="center",
+        text_align="center",
+        border_top="1px solid " + BORDER,
+    )
+
+
+
 # ====== DRAFT VIEW ======
 
-def _draft_role_slot(role: str, idx: int) -> rx.Component:
-    is_filled = GameState.draft_round > idx
-    is_current = GameState.draft_round == idx
-    empty = PlayerCard()
-
-    drafted = rx.cond(is_filled, GameState.drafted_players[idx], empty)
+def _draft_player_card(p: PlayerCard, idx: int) -> rx.Component:
+    """Card vertical de jogador disponível para seleção."""
+    role_taken = GameState.drafted_roles.contains(p.role)
+    disabled = role_taken | GameState.selected_from_current_team
 
     return rx.box(
-        rx.flex(
-            rx.image(
-                src=rx.cond(is_filled, drafted.icon_url, ROLE_ICONS.get(role, "")),
-                width="28px",
-                height="28px",
-                border_radius="6px",
+        rx.vstack(
+            rx.spacer(),
+            # Champion icon
+            rx.box(
+                rx.image(
+                    src=p.icon_url,
+                    width="60px",
+                    height="60px",
+                    object_fit="cover",
+                    border_radius="0px",
+                    border="2px solid " + rx.cond(disabled, GRAY_D, GOLD),
+                    opacity=rx.cond(disabled, "0.4", "1"),
+                ),
+                display="flex",
+                justify_content="center",
+                width="100%",
+            ),
+            # Nome
+            rx.text(p.name, font_weight="700", font_size="0.85rem",
+                     color=rx.cond(disabled, GRAY_D, WHITE),
+                     text_align="center", truncate=True,
+                     px="0.15rem", mt="0.3rem"),
+            # Campeão
+            rx.text(p.champion, font_size="0.65rem",
+                     color=rx.cond(disabled, GRAY_D, GRAY),
+                     text_align="center", truncate=True,
+                     px="0.15rem"),
+            # Role badge
+            rx.text(
+                p.role,
+                font_size="0.6rem", font_weight="700",
+                color=rx.cond(disabled, GRAY_D, GOLD),
+                mt="0.2rem",
+            ),
+            # Overall
+            rx.text(
+                p.overall.to_string(),
+                font_weight="900",
+                font_size="1.3rem",
+                color=rx.cond(disabled, GRAY_D, GOLD),
+                text_align="center",
+                mt="0.2rem",
+            ),
+            rx.spacer(),
+            gap="0.05rem",
+            align_items="center",
+            width="100%",
+            height="100%",
+        ),
+        p="0rem",
+        bg=rx.cond(disabled, BG_CARD, BG_SURFACE),
+        border="2px solid " + rx.cond(disabled, BORDER, BORDER_L),
+        border_top="4px solid " + rx.cond(disabled, GRAY_D, GOLD),
+        border_radius="0px",
+        opacity=rx.cond(disabled, "0.5", "1"),
+        cursor=rx.cond(disabled, "not-allowed", "pointer"),
+        on_click=rx.cond(disabled, rx.noop(), GameState.select_player(p)),
+        _hover=rx.cond(disabled, {}, {"bg": "#1E2D4A", "border_color": GOLD, "transition": "all 0.12s"}),
+        aspect_ratio="3/5",
+        width="100%",
+    )
+
+
+def _draft_team_header() -> rx.Component:
+    team = GameState.current_draft_team
+    return rx.vstack(
+        rx.text(team.display_name, font_weight="900", font_size="1.5rem", color=WHITE,
+                 text_align="center", width="100%"),
+        rx.hstack(
+            rx.text(team.year.to_string(), font_size="0.7rem", color=GRAY),
+            rx.text("·", font_size="0.7rem", color=GRAY_D),
+            rx.text(team.rarity, font_size="0.65rem", font_weight="700",
+                     color=GOLD),
+            rx.text("·", font_size="0.7rem", color=GRAY_D),
+            rx.text(
+                "OVR " + team.overall.to_string().split(".")[0],
+                font_weight="900", font_size="0.75rem", color=GOLD,
+            ),
+            gap="0.4rem",
+            align="center",
+            justify="center",
+            width="100%",
+        ),
+        align_items="center",
+        width="100%",
+        mb="0.5rem",
+    )
+
+
+def _draft_my_team_slot(p: PlayerCard, role: str) -> rx.Component:
+    """Slot da lista Meu Time."""
+    filled = p.name != ""
+    return rx.box(
+        rx.hstack(
+            rx.cond(
+                filled,
+                rx.image(
+                    src=p.icon_url,
+                    width="32px", height="32px",
+                    border_radius="0px",
+                    border="2px solid " + GOLD,
+                ),
+                rx.box(
+                    width="32px", height="32px",
+                    border_radius="0px",
+                    bg=BG_SURFACE,
+                    border="1px dashed " + GRAY_D,
+                    display="flex",
+                    align_items="center",
+                    justify_content="center",
+                ),
             ),
             rx.box(
                 rx.text(
-                    rx.cond(is_filled, drafted.name, role),
-                    font_size="0.78rem",
-                    font_weight=rx.cond(is_filled, "700", "500"),
-                    color=rx.cond(is_filled, WHITE, GRAY),
+                    rx.cond(filled, p.name, role),
+                    font_size="0.75rem",
+                    font_weight=rx.cond(filled, "700", "500"),
+                    color=rx.cond(filled, WHITE, GRAY_D),
                 ),
                 rx.cond(
-                    is_filled,
+                    filled,
                     rx.text(
-                        drafted.champion + "  OVR " + drafted.overall.to_string(),
-                        font_size="0.65rem",
-                        color=GRAY_D,
+                        p.champion + " · OVR " + p.overall.to_string(),
+                        font_size="0.6rem",
+                        color=GRAY,
                     ),
-                    rx.text(
-                        rx.cond(is_current, "disponivel", "aguardando"),
-                        font_size="0.65rem",
-                        color=rx.cond(is_current, GOLD, GRAY_D),
-                    ),
+                    rx.text("--", font_size="0.6rem", color=GRAY_D),
                 ),
                 flex="1",
             ),
-            rx.cond(
-                is_filled,
-                rx.text("OK", font_size="0.7rem", font_weight="800", color=GREEN_L),
-                rx.box(),
+            rx.text(
+                role,
+                font_size="0.6rem",
+                font_weight="600",
+                color=GRAY_D,
+                bg=BG_SURFACE,
+                px="0.35rem",
+                py="0.1rem",
+                border_radius="3px",
             ),
             gap="0.5rem",
             align="center",
             width="100%",
         ),
-        p="0.55rem 0.7rem",
-        bg=rx.cond(is_filled, BG_SURFACE, rx.cond(is_current, "#1A2540", BG_CARD)),
-        border="1px solid " + rx.cond(is_current, GOLD, rx.cond(is_filled, BORDER_L, BORDER)),
-        border_radius="8px",
-        width="100%",
-    )
-
-
-def _draft_player_row(p: PlayerCard, idx: int) -> rx.Component:
-    role = p.role
-    # Check if this role is already filled — compare role string to each drafted player's role
-    is_filled = GameState.draft_round > idx
-    is_current = GameState.draft_round == idx
-
-    return rx.box(
-        rx.flex(
-            rx.image(
-                src=p.icon_url,
-                width="36px",
-                height="36px",
-                border_radius="8px",
-                border="2px solid " + rx.cond(is_current, GOLD, "transparent"),
-            ),
-            rx.box(
-                rx.text(
-                    p.name,
-                    font_weight="700",
-                    font_size="0.85rem",
-                    color=rx.cond(is_filled, GRAY_D, WHITE),
-                ),
-                rx.text(
-                    p.champion,
-                    font_size="0.7rem",
-                    color=rx.cond(is_filled, GRAY_D, GRAY),
-                ),
-                flex="1",
-            ),
-            rx.box(
-                rx.text(p.role, font_size="0.65rem", font_weight="700", color=rx.cond(is_filled, GRAY_D, GRAY),
-                         text_align="center",
-                         bg=rx.cond(is_filled, BG_SURFACE, BG),
-                         px="0.4rem", py="0.15rem", border_radius="4px"),
-                min_w="70px",
-            ),
-            rx.text(
-                p.overall.to_string(),
-                font_weight="900",
-                font_size="1rem",
-                color=rx.cond(is_filled, GRAY_D, GOLD),
-            ),
-            gap="0.6rem",
-            align="center",
-            width="100%",
-        ),
-        p="0.55rem 0.7rem",
-        bg=rx.cond(is_filled, BG_CARD, rx.cond(is_current, BG_SURFACE, BG_CARD)),
-        border_radius="6px",
-        opacity=rx.cond(is_filled, "0.35", "1"),
-        cursor=rx.cond(is_filled, "not-allowed", rx.cond(is_current, "pointer", "default")),
-        on_click=rx.cond(is_current, GameState.select_player(p), rx.noop()),
-        border_left="3px solid " + rx.cond(is_current, GOLD, "transparent"),
-        width="100%",
-    )
-
-
-def _team_card_view() -> rx.Component:
-    team = GameState.current_draft_team
-    rarity_info = RARITY_COLORS.get("Common", ("#1F2937", "#9CA3AF", "#F3F4F6"))
-    r_bg = rarity_info[0]
-    r_text = rarity_info[1] if len(rarity_info) > 1 else "#9CA3AF"
-
-    return rx.box(
-        # Header
-        rx.box(
-            rx.flex(
-                rx.box(
-                    rx.text(team.display_name, font_weight="800", font_size="1.1rem", color=WHITE),
-                    rx.text(
-                        team.rarity,
-                        font_size="0.6rem",
-                        font_weight="700",
-                        color=r_text,
-                        bg=r_bg,
-                        px="0.4rem",
-                        py="0.1rem",
-                        border_radius="3px",
-                        letter_spacing="0.04em",
-                    ),
-                    gap="0.4rem",
-                    align="center",
-                ),
-                rx.text(
-                    rx.text("OVR", font_size="0.6rem", color=GRAY_D, letter_spacing="0.05em"),
-                    rx.text(
-                        team.overall.to_string().split(".")[0],
-                        font_weight="900",
-                        font_size="1.6rem",
-                        color=GOLD,
-                        line_height="1",
-                    ),
-                    gap="0.1rem",
-                    display="flex",
-                    flex_direction="column",
-                    align_items="flex-end",
-                ),
-                justify="between",
-                align="start",
-                width="100%",
-            ),
-            bg=BG_SURFACE,
-            p="0.8rem 1rem",
-            border_radius="8px 8px 0 0",
-        ),
-        # Candidates
-        rx.box(
-            rx.foreach(
-                team.players,
-                lambda p, i: _draft_player_row(p, i),
-            ),
-            bg=BG_CARD,
-            p="0.4rem 0.5rem",
-            gap="0.25rem",
-            display="flex",
-            flex_direction="column",
-        ),
-        # Footer — reroll
-        rx.box(
-            rx.flex(
-                rx.button(
-                    rx.cond(
-                        GameState.reroll_used,
-                        "REROLL USADO",
-                        "REROLL",
-                    ),
-                    on_click=GameState.reroll,
-                    disabled=GameState.reroll_used,
-                    bg=rx.cond(GameState.reroll_used, BG_CARD, BG_SURFACE),
-                    color=rx.cond(GameState.reroll_used, GRAY_D, GOLD),
-                    font_weight="700",
-                    font_size="0.75rem",
-                    size="2",
-                    border_radius="6px",
-                    letter_spacing="0.03em",
-                    cursor=rx.cond(GameState.reroll_used, "not-allowed", "pointer"),
-                ),
-                rx.text(
-                    "Escolha qualquer jogador disponivel",
-                    font_size="0.7rem",
-                    color=GRAY_D,
-                ),
-                justify="between",
-                align="center",
-                width="100%",
-            ),
-            bg=BG_CARD,
-            p="0.6rem 1rem",
-            border_radius="0 0 8px 8px",
-            border_top="1px solid " + BORDER,
-        ),
-        border_radius="8px",
-        overflow="hidden",
+        p="0.4rem 0.6rem",
+        bg=rx.cond(filled, BG_SURFACE, BG_CARD),
+        border="1px solid " + rx.cond(filled, BORDER_L, BORDER),
+        border_radius="0px",
         width="100%",
     )
 
 
 def draft_view() -> rx.Component:
-    return rx.flex(
-        # Left sidebar — slots
+    return rx.box(
         rx.box(
-            rx.text("SEU TIME", font_size="0.65rem", font_weight="700", color=GRAY_D,
-                     letter_spacing="0.08em", mb="0.8rem"),
-            rx.flex(
-                _draft_role_slot("Top", 0),
-                _draft_role_slot("Jungle", 1),
-                _draft_role_slot("Mid", 2),
-                _draft_role_slot("ADC", 3),
-                _draft_role_slot("Support", 4),
-                direction="column",
-                gap="0.4rem",
+            rx.hstack(
+                # ===== COLUNA ESQUERDA (maior) — Time sorteado =====
+                rx.vstack(
+                    # Team header
+                    _draft_team_header(),
+                    # Players cards
+                    rx.box(
+                        rx.box(
+                            rx.foreach(
+                                GameState.current_draft_team.players,
+                                lambda p, i: _draft_player_card(p, i),
+                            ),
+                            gap="0.5rem",
+                            display="grid",
+                            grid_template_columns="repeat(5, 1fr)",
+                            width="100%",
+                            max_width="650px",
+                        ),
+                        display="flex",
+                        justify_content="center",
+                        width="100%",
+                    ),
+                    # Action buttons
+                    rx.box(
+                        rx.cond(
+                            GameState.draft_complete,
+                            rx.vstack(
+                                rx.hstack(
+                                    rx.input(
+                                        value=GameState.team_name_input,
+                                        on_change=GameState.set_team_name,
+                                        placeholder="Nome do seu time",
+                                        font_size="0.9rem",
+                                        font_weight="600",
+                                        color=WHITE,
+                                        bg=BG_SURFACE,
+                                        border="1px solid " + BORDER,
+                                        border_radius="0px",
+                                        padding="0.6rem 1rem",
+                                        height="44px",
+                                        width="240px",
+                                        _placeholder={"color": GRAY_D},
+                                    ),
+                                    rx.button(
+                                        "INICIAR LIGA →",
+                                        on_click=GameState.init_league,
+                                        bg=GOLD,
+                                        color=BG,
+                                        font_weight="800",
+                                        font_size="1rem",
+                                        padding="0.9rem 3rem",
+                                        border_radius="0px",
+                                        letter_spacing="0.06em",
+                                        _hover={"bg": GOLD_L, "transform": "scale(1.02)"},
+                                        disabled=GameState.team_name_input == "",
+                                    ),
+                                    gap="0.75rem",
+                                    align="center",
+                                ),
+                            ),
+                            rx.hstack(
+                                rx.button(
+                                    rx.cond(GameState.reroll_used, "REROLL USADO", "REROLL"),
+                                    on_click=GameState.reroll,
+                                    disabled=GameState.reroll_used,
+                                    bg=rx.cond(GameState.reroll_used, BG_CARD, "transparent"),
+                                    color=rx.cond(GameState.reroll_used, GRAY_D, GOLD),
+                                    border="1px solid " + rx.cond(GameState.reroll_used, BORDER, GOLD),
+                                    font_weight="700",
+                                    font_size="0.8rem",
+                                    padding="0.6rem 1.5rem",
+                                    border_radius="0px",
+                                    letter_spacing="0.04em",
+                                    cursor=rx.cond(GameState.reroll_used, "not-allowed", "pointer"),
+                                    _hover={"bg": rx.cond(GameState.reroll_used, BG_CARD, "rgba(201,168,76,0.1)")},
+                                ),
+                                rx.button(
+                                    "PRÓXIMO TIME →",
+                                    on_click=GameState.next_team,
+                                    bg=GOLD,
+                                    color=BG,
+                                    font_weight="800",
+                                    font_size="0.9rem",
+                                    padding="0.6rem 2rem",
+                                    border_radius="0px",
+                                    letter_spacing="0.05em",
+                                    _hover={"bg": GOLD_L, "transform": "scale(1.02)"},
+                                ),
+                                gap="0.75rem",
+                                justify="center",
+                                width="100%",
+                            ),
+                        ),
+                        width="100%",
+                        display="flex",
+                        justify_content="center",
+                        mt="1rem",
+                    ),
+                    flex="3",
+                    min_w="380px",
+                ),
+                # ===== COLUNA DIREITA (menor) — Mapa + Meu Time =====
+                rx.vstack(
+                    # Map
+                    rx.box(
+                        rx.box(
+                            rx.image(
+                                src="/summoners_rift_modern.png",
+                                width="100%",
+                                border_radius="0px",
+                                opacity="0.85",
+                            ),
+                            rx.foreach(
+                                GameState.draft_map_icons,
+                                _draft_champion_pin,
+                            ),
+                            position="relative",
+                            border_radius="0px",
+                        ),
+                        width="100%",
+                        max_w="264px",
+                    ),
+                    # Meu Time
+                    rx.box(
+                        rx.text("MEU TIME", font_size="0.65rem", font_weight="700",
+                                 color=GRAY_D, letter_spacing="0.08em", mb="0.5rem"),
+                        rx.vstack(
+                            _draft_my_team_slot(GameState.drafted_slots[0], "Top"),
+                            _draft_my_team_slot(GameState.drafted_slots[1], "Jungle"),
+                            _draft_my_team_slot(GameState.drafted_slots[2], "Mid"),
+                            _draft_my_team_slot(GameState.drafted_slots[3], "ADC"),
+                            _draft_my_team_slot(GameState.drafted_slots[4], "Support"),
+                            gap="0.3rem",
+                            width="100%",
+                        ),
+                        width="100%",
+                        max_w="264px",
+                        mt="0.75rem",
+                    ),
+                    align_items="flex-start",
+                    min_w="220px",
+                    flex="1",
+                    pb="3rem",
+                ),
+                align="stretch",
                 width="100%",
+                max_width="1100px",
+                mx="auto",
+                mb="2rem",
             ),
-            width="280px",
-            bg=BG_CARD,
-            border_right="1px solid " + BORDER,
-            p="1.25rem",
-            height="calc(100vh - 56px)",
-            position="sticky",
-            top="56px",
+            display="flex",
+            justify_content="center",
+            width="100%",
+            px="2rem",
         ),
-        # Right — team card
-        rx.box(
-            _team_card_view(),
-            flex="1",
-            p="1.5rem",
-            max_w="560px",
-        ),
-        width="100%",
+        rx.box(height="3rem"),
+        footer(),
         bg=BG,
-        padding_top="56px",
         min_height="100vh",
+        padding_top="90px",
     )
 
 
@@ -895,9 +1173,9 @@ def result_view() -> rx.Component:
         align_items="center",
         justify_content="center",
         flex_direction="column",
-        min_height="calc(100vh - 56px)",
+        min_height="calc(100vh - 90px)",
         bg=BG,
-        padding_top="56px",
+        padding_top="90px",
     )
 
 
@@ -1040,6 +1318,6 @@ def index() -> rx.Component:
         rx.cond(GameState.screen == "result", result_view(), rx.box()),
         rx.cond(GameState.screen == "playoffs", playoffs_view(), rx.box()),
         font_family="'Plus Jakarta Sans', sans-serif",
-        bg=BG,
+                bg=BG,
         min_height="100vh",
     )

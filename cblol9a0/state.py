@@ -38,6 +38,15 @@ class TeamCard(BaseModel):
     players: list[PlayerCard] = []
 
 
+class HeroMapIcon(BaseModel):
+    name: str = ""
+    role: str = ""
+    champion: str = ""
+    icon_url: str = ""
+    pin_top: str = "50%"
+    pin_left: str = "50%"
+
+
 class Matchup(BaseModel):
     team_a: str = ""
     team_b: str = ""
@@ -90,12 +99,52 @@ def _build_schedule(player_team_name: str) -> list[Matchup]:
 class GameState(rx.State):
     screen: str = "home"
 
+    # Home hero map — keyed by ddragon URL-safe champion name
+    HERO_CHAMPIONS_BY_ROLE: dict[str, list[str]] = {
+        "Top": ["Garen", "Darius", "Renekton", "Camille", "Fiora", "Illaoi", "Sett", "Mordekaiser", "Aatrox", "Shen", "Jax", "Riven", "Volibear", "Quinn", "Malphite", "Yasuo", "Poppy", "Udyr"],
+        "Jungle": ["LeeSin", "Elise", "JarvanIV", "RekSai", "Viego", "XinZhao", "Graves", "Nidalee", "Ekko", "Hecarim", "Rammus", "Warwick", "Nocturne", "Shaco", "Khazix", "Kindred", "Zac", "Amumu", "Kayn", "MasterYi"],
+        "Mid": ["Syndra", "Orianna", "Ahri", "Azir", "Leblanc", "Cassiopeia", "Viktor", "Zed", "Corki", "Ryze", "Lux", "Diana", "Annie", "TwistedFate", "Veigar", "Akali", "Qiyana", "Sylas", "Galio", "Malzahar"],
+        "ADC": ["Jinx", "Ezreal", "Vayne", "Lucian", "Varus", "Tristana", "Ashe", "Kaisa", "Xayah", "Caitlyn", "Draven", "MissFortune", "Sivir", "Aphelios", "Kalista", "Senna", "Zeri", "Samira", "Twitch", "KogMaw"],
+        "Support": ["Thresh", "Leona", "Nautilus", "Lulu", "Blitzcrank", "Alistar", "Morgana", "Janna", "Soraka", "Braum", "Rakan", "Karma", "Nami", "Zyra", "Yuumi", "Rell", "Renata", "Taric", "Sona", "Pyke"],
+    }
+    HERO_PIN_POSITIONS: dict[str, tuple[str, str]] = {
+        "Top": ("22%", "25%"),
+        "Jungle": ("32%", "41%"),
+        "Mid": ("49%", "47%"),
+        "ADC": ("70%", "67%"),
+        "Support": ("81%", "58%"),
+    }
+    hero_map_icons: list[HeroMapIcon] = []
+
+    def _randomize_hero_map(self):
+        icons = []
+        for role, champions in self.HERO_CHAMPIONS_BY_ROLE.items():
+            champ = random.choice(champions)
+            pos = self.HERO_PIN_POSITIONS.get(role, ("50%", "50%"))
+            icons.append(HeroMapIcon(
+                name=champ,
+                role=role,
+                champion=champ,
+                icon_url=f"https://ddragon.leagueoflegends.com/cdn/14.10.1/img/champion/{champ}.png",
+                pin_top=pos[0],
+                pin_left=pos[1],
+            ))
+        self.hero_map_icons = icons
+
+    def on_load(self):
+        """Called on page load — randomize hero map champions."""
+        self._randomize_hero_map()
+
     # Draft
     current_draft_team: TeamCard = TeamCard()
     drafted_players: list[PlayerCard] = []
     draft_round: int = 0
     reroll_used: bool = False
+    selected_from_current_team: bool = False
     roles_order: list[str] = ["Top", "Jungle", "Mid", "ADC", "Support"]
+    draft_map_icons: list[HeroMapIcon] = []
+    selected_pin_idx: int = -1
+    team_name_input: str = "Meu Time"
 
     # League
     player_team_name: str = "Meu Time"
@@ -128,6 +177,13 @@ class GameState(rx.State):
         return [p.role for p in self.drafted_players]
 
     @rx.var
+    def drafted_slots(self) -> list[PlayerCard]:
+        """5 slots ordenados por role (Top, Jungle, Mid, ADC, Support)."""
+        mapping = {p.role: p for p in self.drafted_players}
+        order = ["Top", "Jungle", "Mid", "ADC", "Support"]
+        return [mapping.get(r, PlayerCard()) for r in order]
+
+    @rx.var
     def league_wins(self) -> int:
         return sum(1 for m in self.league_schedule if m.played and m.winner == self.player_team_name)
 
@@ -155,50 +211,85 @@ class GameState(rx.State):
         self.current_draft_team = _team_to_card(t)
 
     def start_game(self):
+        self._randomize_hero_map()
         self.screen = "home"
 
     def init_draft(self):
         self.drafted_players = []
         self.draft_round = 0
         self.reroll_used = False
+        self.selected_from_current_team = False
+        self.selected_pin_idx = -1
+        self.draft_map_icons = []
+        self.team_name_input = "Meu Time"
         reset_pool()
         self._draw_next_team()
         self.screen = "draft"
 
     def select_player(self, player: PlayerCard):
-        # Aceita qualquer role que ainda nao foi preenchida
+        # Só pode selecionar 1 jogador por time sorteado
+        if self.selected_from_current_team:
+            return
         if self.draft_round >= 5:
             return
-        # Verifica se a role ja foi preenchida
         already_taken = [p.role for p in self.drafted_players]
         if player.role in already_taken:
             return
 
         self.drafted_players.append(player)
         self.draft_round += 1
+        self.selected_from_current_team = True
+
+        # Adiciona pin no mapa do draft
+        champ_name = player.champion
+        pos = self.HERO_PIN_POSITIONS.get(player.role, ("50%", "50%"))
+        new_icon = HeroMapIcon(
+            name=player.name,
+            role=player.role,
+            champion=champ_name,
+            icon_url=f"https://ddragon.leagueoflegends.com/cdn/14.10.1/img/champion/{champ_name}.png",
+            pin_top=pos[0],
+            pin_left=pos[1],
+        )
+        self.draft_map_icons = self.draft_map_icons + [new_icon]
 
         if self.draft_round >= 5:
-            self.init_league()
-        else:
-            self._draw_next_team()
+            # Não chama init_league automaticamente, aguarda o botão
+            pass
+
+    def next_team(self):
+        """Sorteia o próximo time (acionado pelo botão PRÓXIMO TIME)."""
+        if self.draft_round >= 5:
+            return
+        self.selected_from_current_team = False
+        self.selected_pin_idx = -1
+        self._draw_next_team()
 
     def reroll(self):
         if self.reroll_used:
             return
         self.reroll_used = True
+        self.selected_from_current_team = False
+        self.selected_pin_idx = -1
         self._draw_next_team()
+
+    def toggle_pin_info(self, idx: int):
+        if self.selected_pin_idx == idx:
+            self.selected_pin_idx = -1
+        else:
+            self.selected_pin_idx = idx
+
+    def set_team_name(self, name: str):
+        self.team_name_input = name
 
     # --- League Handlers ---
 
     def init_league(self):
-        # Build team name from drafted players
-        team_names = set(p.team for p in self.drafted_players)
-        if len(team_names) > 1:
-            self.player_team_name = "Misto All-Stars"
-        elif len(team_names) == 1:
-            self.player_team_name = list(team_names)[0]
-        else:
-            self.player_team_name = "Meu Time"
+        # Usa o nome digitado pelo jogador ou fallback
+        name = self.team_name_input.strip()
+        if not name:
+            name = "Meu Time"
+        self.player_team_name = name
 
         self.league_schedule = _build_schedule(self.player_team_name)
         self.playoff_bracket = []
@@ -411,11 +502,16 @@ class GameState(rx.State):
     # --- Reset ---
 
     def restart(self):
+        self._randomize_hero_map()
         self.screen = "home"
         self.current_draft_team = TeamCard()
         self.drafted_players = []
         self.draft_round = 0
         self.reroll_used = False
+        self.selected_from_current_team = False
+        self.selected_pin_idx = -1
+        self.draft_map_icons = []
+        self.team_name_input = "Meu Time"
         self.player_team_name = "Meu Time"
         self.league_schedule = []
         self.match_events = []
